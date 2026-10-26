@@ -1,72 +1,140 @@
-# Evervault Personal Media — self-hosted starter
+# Evervault — Personal Media Cloud
 
-A private, Google Photos-inspired personal media library. The Windows machine runs the server; original media files live on your own HDD. The responsive web UI can be installed as a PWA and wrapped into an Android APK with Capacitor.
+A personal photo and media library with a FastAPI backend, a lightweight web interface, Google Drive file storage, and PostgreSQL-backed metadata for the hosted version.
 
-## Included
-- First-run owner account with a password of at least 12 characters; password hashes use scrypt.
-- Authenticated gallery, search, video playback, favourites, albums, and delete endpoint.
-- Chunked uploads (8 MiB chunks) with server-side offset checks and final SHA-256 verification.
-- SQLite metadata and media stored outside the application directory.
-- Windows launch and PyInstaller build scripts.
-- Android Capacitor wrapper with an opt-in native background backup module (WorkManager source and integration instructions).
-- Public HTTPS access setup notes.
+**Hosted app:** [evervault-94v1.onrender.com](https://evervault-94v1.onrender.com)
+**Repository:** [shuvadeepbiswas731-source/evervault](https://github.com/shuvadeepbiswas731-source/evervault)
 
-## Important status / limitations
-This is a runnable MVP starter, not yet a Google Photos feature-equivalent product. Uploads are chunked and can be retried by restarting a new upload, but automatic client-side resume after a browser closes, HEIC/RAW thumbnail generation, face recognition, duplicate detection, and transcoding are not included yet. An initial Android background backup module is included but requires native integration, APK build, and device testing. Browser video seeking depends on the browser/server range support. Albums are simple labels. The Android wrapper requires a configured HTTPS hostname and a local Android build; no signed APK is prebuilt in this source archive.
+> **Project status:** The hosted version is running. Local-first storage with Google Drive fallback and verified recovery is experimental and is not yet a supported, fully-tested feature. Do not use any cleanup or move script on important files until you have tested it with copies.
 
-## Requirements
-- Windows 10/11, 64-bit
-- Python 3.11+ (check `py --version`)
-- Optional: Node.js LTS + Android Studio to build the Android APK
-- For remote access: Cloudflare account and `cloudflared`, or another HTTPS reverse tunnel you trust
+## What it does
 
-## Run locally
-1. Extract this folder to a stable path.
-2. Double-click `start_windows.bat`. It creates a virtual environment and installs dependencies on first run.
-3. Open `http://127.0.0.1:8765`.
-4. On first launch, create the owner username and a long unique password.
-5. Select **Add memories** to upload photos/videos.
+- Upload and view photos and other media through a browser.
+- Organize media into albums and mark favorites.
+- Search the library and open stored files from the web interface.
+- Use Google Drive to store the media files instead of relying on an ephemeral application filesystem.
+- Store hosted app metadata and account settings in Neon PostgreSQL; the Windows/local version uses SQLite.
+- Run the FastAPI application locally on Windows or deploy it as a web service on Render.
 
-The default data directory is `%USERPROFILE%\\EvervaultData`. It contains `media`, `incoming`, `evervault.sqlite3`, and the private signing secret. Back up this directory. Do not delete `.secret` while the server is running or existing sessions will be invalidated.
+Evervault is designed primarily as a personal/single-owner library, not as a multi-tenant service for unrelated users.
 
-## Use your G: drive (configured for this PC)
-The included `start_windows.bat` is configured to use `G:\EvervaultData`. Connect G: before starting the server.
+## How the storage fits together
 
-If you already uploaded photos to C:, first close the running Evervault server window, then double-click `migrate_to_g_drive.bat`. It copies `%USERPROFILE%\EvervaultData` to `G:\EvervaultData`, preserves the original C: copy, and configures the drive path. Then launch `start_windows.bat` and confirm your existing photos still appear.
+### Hosted edition
 
-Do not delete the C: copy until you have verified the gallery and opened several photos/videos. Keep the drive letter stable. The launcher checks that G: exists before starting to avoid silently using the wrong drive.
+- **Render:** runs the FastAPI web application. The free service may sleep while idle.
+- **Neon PostgreSQL:** stores metadata and account settings.
+- **Google Drive:** stores media files through the Google Drive API.
 
-## Build a Windows executable
-Run `build_windows.bat`. The output is `dist\\Evervault\\Evervault.exe` plus its supporting `_internal` directory. Keep the whole `Evervault` output folder together. The program listens on port 8765. This build is a server executable; it opens a console window and you browse the gallery at `http://127.0.0.1:8765`. It does not yet install as a Windows service or tray application.
+Render cannot directly access files on your Windows computer or its `G:` drive. Online uploads therefore use the configured Google Drive account.
 
-## Public remote access (Cloudflare Tunnel)
-Do **not** expose port 8765 directly on your router. Use an HTTPS tunnel.
+### Windows edition
 
-1. Install `cloudflared` on Windows and sign in to Cloudflare.
-2. Create a Cloudflare Tunnel and attach a hostname you control, e.g. `photos.example.com`.
-3. Configure the tunnel's local service as `http://localhost:8765`.
-4. Start Evervault first, then run your tunnel. Use the exact HTTPS hostname for phone/other devices.
-5. Test on mobile data with Wi-Fi disabled. Sign in with your Evervault username/password.
+- **Application:** run from the project folder.
+- **SQLite and app state:** the configured `EVERVAULT_DATA_DIR` location; `start_windows.bat` currently displays `G:\EvervaultData` by default in the setup used by the maintainer.
+- **Media files:** local storage is used by the local-first development version when the configured media drive is available.
 
-Cloudflare Tunnel encrypts the public leg and avoids inbound router port forwarding. A custom domain is optional only if your tunnel setup supports a managed `trycloudflare.com` URL; that URL can change and is not ideal for the Android wrapper. Never publish this app without a strong unique password. For additional protection, enable Cloudflare Access in front of the hostname and allow only your own identity. Note that Access login and the app login are separate layers.
+Local-first fallback/reconciliation is still being developed. The intended workflow is to save locally when possible, use Google Drive only as a fallback if the local media drive is unavailable, and remove the fallback copy only after verifying the restored local file by size and SHA-256. Treat this workflow as experimental until the restore and failure cases have been tested end-to-end.
 
-## Security and reliability notes
-- The first-run setup endpoint closes after an owner account is created.
-- Keep the host OS patched, restrict who can access the hostname, and use a unique password.
-- Do not expose the server's SQLite file or media directory through a static web server.
-- Keep a second backup of irreplaceable photos; a single HDD is not a backup.
-- The server binds to all interfaces on port 8765 for LAN/tunnel use. Do not port-forward that port.
-- This MVP has no account recovery or multi-user support. Keep the password manager entry safe.
-- Large upload sizes depend on disk space, tunnel limits, browser memory, and connection stability.
+## Run locally on Windows
 
-## Android app
-See `android/README.md` and `android/native-background-backup/README.md`. The wrapper includes opt-in charging/network-constrained backup source code, but you must integrate the native plugin and build/test an APK with Node.js + Android Studio. If you prefer not to install a native app yet, open the HTTPS URL in Chrome on Android and use **Install app / Add to Home screen**.
+### Requirements
 
-## Troubleshooting
-- Port busy: change `EVERVAULT_PORT` before launch (e.g. `setx EVERVAULT_PORT 8766`) and update the tunnel target.
-- Upload interrupted: check free disk space and the incoming folder; retry the upload.
-- Server logs: the console window shows Python errors.
-- External drive: verify `EVERVAULT_DATA_DIR` and confirm the drive is mounted before starting the server.
+- Windows
+- Python 3 installed and available as `py`
+- A Google Cloud project with the Google Drive API enabled, plus an OAuth client configured for the application
 
+### Start the app
 
-Configured storage for this setup: `G:\EvervaultData`. Run `migrate_to_g_drive.bat` once to copy an existing C: library safely.
+1. Clone the repository.
+2. Open Command Prompt in the project directory.
+3. Create and install the environment:
+
+   ```bat
+   py -3 -m venv .venv
+   .venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+4. Configure Google Drive credentials as described below.
+5. Run:
+
+   ```bat
+   start_windows.bat
+   ```
+
+6. Open [http://localhost:8765](http://localhost:8765).
+
+The project’s launcher and configured data directory may be specific to the maintainer’s Windows setup; review `start_windows.bat` before using it on a different machine.
+
+## Deploy to Render + Neon
+
+The currently hosted setup uses Render for the FastAPI process, Neon for PostgreSQL, and Google Drive for media files.
+
+Typical Render settings:
+
+- **Root directory:** blank
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `uvicorn run_server:app --host 0.0.0.0 --port $PORT`
+
+Configure these environment variables in the Render dashboard (do not commit real values):
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Neon PostgreSQL connection URL, including the required SSL setting |
+| `EVERVAULT_SECRET` | Stable secret used by the application for signing sessions/cookies |
+| `GOOGLE_DRIVE_TOKEN_JSON` | Complete OAuth token JSON used by the Drive storage helper |
+
+For `GOOGLE_DRIVE_TOKEN_JSON`, supply the full JSON value from a freshly authorized token, including its opening and closing braces. Never publish the token, refresh token, client secret, database URL, or `EVERVAULT_SECRET`.
+
+The app’s media metadata must already be present in the configured database. The migration utility `migrate_sqlite_to_neon.py` is a one-time maintainer tool and is intentionally excluded from source control; do not run migrations against production without a backup and a verification plan.
+
+## Google Drive setup
+
+1. Create or select a Google Cloud project.
+2. Enable the Google Drive API.
+3. Configure OAuth consent and create an OAuth client appropriate for the local authorization flow.
+4. Authorize the Google account that should own the media.
+5. Keep token files and OAuth client secrets outside Git. For Render, store the token JSON as a dashboard environment variable.
+
+The Google account connected to the token is the account that receives media uploads. Check the authorized account before using the app with personal files.
+
+## Repository map
+
+```text
+app/
+  server.py               FastAPI app and API routes
+  web/                    Browser UI assets
+scripts/
+  google_drive_storage.py Google Drive storage helper
+android/                  Android/Capacitor companion project and backup plugin
+run_server.py             ASGI app entry point
+start_windows.bat         Windows launcher
+requirements.txt           Python dependencies
+```
+
+There are also maintainer notes for Android background backup and migration. Scripts that move or delete stored files should be reviewed carefully before use.
+
+## Security and privacy
+
+- Never commit `.env`, OAuth credentials, Google Drive token JSON, `.secret`, SQLite databases, personal photos, or copied production data.
+- Keep this repository private until you have reviewed the complete Git history and decided on a license.
+- If a token or password is shared accidentally, revoke/rotate it at the provider and update the local configuration and Render environment variables.
+- Use a dedicated Google account if you want to isolate app media from other personal Drive content.
+- A public repository does not make the hosted library safe for public access by itself. Keep authentication and production secrets configured correctly.
+- Back up your database and media before testing migration or cleanup utilities.
+
+See [SECURITY.md](SECURITY.md) for reporting a security issue and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
+
+## Roadmap
+
+- [x] Hosted FastAPI app
+- [x] Neon PostgreSQL for hosted metadata
+- [x] Google Drive-backed media storage
+- [ ] Fully tested local-first uploads and Google Drive fallback
+- [ ] Safe recovery workflow that verifies restored files before cleanup
+- [ ] More automated tests for disconnects, interrupted uploads, and restore failures
+- [ ] Screenshots and a short contributor/developer walkthrough
+
+## Contributing
+
+Bug reports, documentation improvements, and focused pull requests are welcome. Please do not include real credentials, private photos, database dumps, access tokens, or other personal data in issues or pull requests.
