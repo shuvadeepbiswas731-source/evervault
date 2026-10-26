@@ -1,0 +1,8 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9
+pyinstaller>=6.10
+
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

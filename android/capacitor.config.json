@@ -1,0 +1,17 @@
+{
+  "appId": "com.evervault.personalmedia",
+  "appName": "Evervault",
+  "webDir": "www",
+  "server": {
+    "url": "https://YOUR-DOMAIN.example",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#10131b",
+      "showSpinner": false
+    }
+  }
+}

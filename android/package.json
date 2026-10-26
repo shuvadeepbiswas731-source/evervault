@@ -1,0 +1,18 @@
+{
+  "name": "evervault-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android wrapper for Evervault Personal Media",
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "build": "cap sync android && cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/android": "^6.2.0"
+  }
+}

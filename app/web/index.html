@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#10131b"><meta name="description" content="Your private photo and video library">
+<link rel="manifest" href="/assets/manifest.json"><link rel="stylesheet" href="/assets/style.css">
+<title>Evervault — Personal Media</title>
+</head>
+<body>
+<div id="authScreen" class="auth-screen hidden">
+  <div class="auth-card"><div class="brand-mark">e</div><div class="eyebrow">YOUR PRIVATE LIBRARY</div><h1 id="authTitle">Welcome home.</h1><p class="muted" id="authDesc">Your photos. Your videos. Your storage.</p>
+  <form id="authForm"><label>Username<input id="username" autocomplete="username" required minlength="3" maxlength="40"></label><label>Password<input id="password" type="password" autocomplete="current-password" required minlength="12"></label><button class="primary full" id="authSubmit">Sign in</button><div id="authError" class="error"></div></form><p class="tiny">Private by design · Stored on your own drive</p></div>
+</div>
+<div id="app" class="shell hidden">
+<aside class="sidebar"><div class="brand"><div class="brand-mark">e</div><div><b>evervault</b><small>PERSONAL CLOUD</small></div></div>
+<nav><button class="nav active" data-view="all"><span>▦</span> All memories</button><button class="nav" data-view="favorites"><span>♡</span> Favourites</button><button class="nav" id="backupSettingsBtn" data-view="backup"><span>⟳</span> Automatic backup</button><div class="nav-label">YOUR LIBRARY</div><div id="albumNav"></div></nav>
+<div class="side-bottom"><div class="storage-icon">▤</div><div><b>Private storage</b><small>Original quality · Your drive</small></div><button id="logout" class="icon-btn" title="Sign out">↗</button></div></aside>
+<main class="main"><header class="topbar"><div><div class="eyebrow">YOUR WORLD, IN ONE PLACE</div><h1 id="viewTitle">All memories</h1></div><div class="top-actions"><label class="search"><span>⌕</span><input id="search" placeholder="Search your memories…" type="search"></label><button id="uploadBtn" class="primary"><span>＋</span> Add memories</button><input id="fileInput" type="file" accept="image/*,video/*" multiple hidden></div></header>
+<section class="welcome"><div><div class="welcome-tag"><span class="pulse"></span> YOUR PERSONAL ARCHIVE</div><h2>A lifetime of moments.<br><em>All in one place.</em></h2><p>Every photo, every story — safe in your own hands.</p></div><div class="welcome-art"><div class="orb orb1"></div><div class="orb orb2"></div><div class="art-spark">✳</div><div class="art-caption">MEMORIES<br><b>∞</b></div></div></section>
+<div class="section-head"><div><h2 id="gridTitle">Recently added</h2><p id="countText">Your private collection</p></div><div class="view-switch"><button class="selected" title="Grid view">▦</button></div></div>
+<div id="uploadStatus" class="upload-status hidden"><div class="upload-line"><span id="uploadLabel">Uploading…</span><b id="uploadPercent">0%</b></div><div class="progress"><span id="progressBar"></span></div><small id="uploadSub">Keep this window open while uploading.</small></div>
+<div id="empty" class="empty hidden"><div class="empty-icon">✧</div><h3>Your story starts here</h3><p>Add photos and videos to begin building your personal archive.</p><button class="primary" onclick="document.getElementById('fileInput').click()">＋ Upload your first memories</button></div>
+<div id="grid" class="media-grid"></div>
+<footer><span>EVERVAULT <i>·</i> YOURS, ALWAYS.</span><span>Originals stored locally on your drive</span></footer>
+</main></div>
+<div id="viewer" class="viewer hidden"><button id="closeViewer" class="viewer-close">×</button><button id="prevViewer" class="viewer-nav prev">‹</button><div id="viewerContent"></div><button id="nextViewer" class="viewer-nav next">›</button><div id="viewerMeta" class="viewer-meta"></div></div>
+
+<div id="backupModal" class="backup-modal hidden" role="dialog" aria-modal="true" aria-labelledby="backupTitle">
+  <div class="backup-panel">
+    <button id="backupClose" class="backup-close" aria-label="Close">×</button>
+    <div class="eyebrow">ANDROID DEVICE BACKUP</div>
+    <h2 id="backupTitle">Keep your memories safe.</h2>
+    <p class="muted">Automatically back up photos and videos when your Android phone is charging and connected to Wi-Fi or another unmetered network.</p>
+    <div class="backup-status-card"><span class="backup-status-dot"></span><div><b id="backupStateTitle">Checking device support…</b><small id="backupStateText">Automatic backup runs on your phone, not on this web page.</small></div></div>
+    <label class="backup-field">Server address<input id="backupServerUrl" type="url" placeholder="https://your-tunnel.trycloudflare.com"></label>
+    <p class="tiny">Use your current Evervault HTTPS address. Temporary Cloudflare Quick Tunnel addresses can change; update this field if yours changes.</p>
+    <label class="backup-field">Backup mode<select id="backupNetwork"><option value="unmetered">Wi-Fi / unmetered network + charging</option><option value="connected">Any network + charging</option></select></label>
+    <div class="backup-actions"><button id="backupEnable" class="primary">Enable automatic backup</button><button id="backupDisable" class="secondary">Pause automatic backup</button></div>
+    <p class="tiny">Android may ask permission to access photos and videos. Backup runs periodically, not instantly. Keep Evervault reachable and stay signed in.</p>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="/assets/app.js"></script>
+</body></html>
