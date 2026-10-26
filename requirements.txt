@@ -6,3 +6,4 @@ pyinstaller>=6.10
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+psycopg[binary]>=3.2,<4
