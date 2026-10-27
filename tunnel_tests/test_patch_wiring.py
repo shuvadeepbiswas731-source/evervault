@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import ast
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class PatchWiringTests(unittest.TestCase):
+    def test_pr_preview_isolated_from_production_configuration(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('IS_PULL_REQUEST = os.environ.get("IS_PULL_REQUEST", "").strip().lower() == "true"', source)
+        self.assertIn("if not IS_PULL_REQUEST and os.environ.get", source)
+        self.assertIn('DATABASE_URL = os.environ.get("EVERVAULT_PREVIEW_DATABASE_URL", "").strip()', source)
+        self.assertIn(
+            'LOCAL_STORAGE_TOKEN = os.environ.get("EVERVAULT_PREVIEW_TUNNEL_TOKEN", "").strip()',
+            source,
+        )
+        self.assertIn(
+            'os.environ.get("EVERVAULT_PREVIEW_TUNNEL_ENABLED", "0").strip() == "1"',
+            source,
+        )
+        self.assertIn("and len(LOCAL_STORAGE_TOKEN) >= 32", source)
+        self.assertIn('request.method == "POST"', source)
+        self.assertIn('os.environ.get("EVERVAULT_PREVIEW_SECRET", "").strip()', source)
+        self.assertIn('preview_read_only_guard', source)
+        self.assertIn('LOCAL_STORAGE_URL = ""', source)
+
+    def test_render_websocket_route_is_opt_in_and_authenticated(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        self.assertIn('TUNNEL_ENABLED = os.environ.get("EVERVAULT_TUNNEL_ENABLED", "0").strip() == "1"', source)
+        self.assertIn('@app.websocket("/internal/tunnel/ws")', source)
+        self.assertIn('openapi_url=None', source)
+        self.assertIn('bearer_matches(websocket.headers.get("authorization"), LOCAL_STORAGE_TOKEN)', source)
+        self.assertIsNotNone(next((node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "delete_media"), None))
+
+    def test_remote_photo_route_uses_tunnel_only_when_enabled(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('async def media_file(', source)
+        self.assertIn('if USE_POSTGRES and TUNNEL_ENABLED:', source)
+        self.assertIn('await TUNNEL_MANAGER.open_download(', source)
+
+    def test_remote_photo_route_preserves_drive_fallback_when_tunnel_is_unavailable(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        start = source.index("    # Preferred remote path: Render relays the request over the Windows client's")
+        end = source.index("    # Compatibility path for earlier deployments that exposed an authenticated local-agent URL.", start)
+        block = source[start:end]
+        self.assertIn("if tunnel_status in (200, 206) and tunnel_body is not None:", block)
+        self.assertIn("if not drive_id:", block)
+        self.assertIn("fall through to the existing streamed Google Drive reader", block)
+        self.assertNotIn('raise HTTPException(503, "The personal photo drive is offline or this file is waiting for recovery.")', block)
+
+    def test_windows_client_uses_outbound_wss_and_loopback_agent(self):
+        source = (ROOT / "app" / "tunnel_client.py").read_text(encoding="utf-8")
+        self.assertIn('websockets.asyncio.client import connect', source)
+        self.assertIn('http://127.0.0.1:8766', source)
+        self.assertNotIn('0.0.0.0', source)
+        self.assertIn('additional_headers={"Authorization": f"Bearer {token}"}', source)
+
+    def test_remote_delete_remains_disabled_in_agent(self):
+        source = (ROOT / "app" / "storage_agent.py").read_text(encoding="utf-8")
+        self.assertIn('Remote media deletion is disabled', source)
+        self.assertIn('raise HTTPException(\n        405,', source)
+
+
+if __name__ == "__main__":
+    unittest.main()
