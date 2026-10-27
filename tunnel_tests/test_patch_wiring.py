@@ -8,6 +8,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PatchWiringTests(unittest.TestCase):
+    def test_pr_preview_isolated_from_production_configuration(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('IS_PULL_REQUEST = os.environ.get("IS_PULL_REQUEST", "").strip().lower() == "true"', source)
+        self.assertIn("if not IS_PULL_REQUEST and os.environ.get", source)
+        self.assertIn('DATABASE_URL = os.environ.get("EVERVAULT_PREVIEW_DATABASE_URL", "").strip()', source)
+        self.assertIn(
+            'LOCAL_STORAGE_TOKEN = os.environ.get("EVERVAULT_PREVIEW_TUNNEL_TOKEN", "").strip()',
+            source,
+        )
+        self.assertIn(
+            'os.environ.get("EVERVAULT_PREVIEW_TUNNEL_ENABLED", "0").strip() == "1"',
+            source,
+        )
+        self.assertIn("and len(LOCAL_STORAGE_TOKEN) >= 32", source)
+        self.assertIn('request.method == "POST"', source)
+        self.assertIn('os.environ.get("EVERVAULT_PREVIEW_SECRET", "").strip()', source)
+        self.assertIn('preview_read_only_guard', source)
+        self.assertIn('LOCAL_STORAGE_URL = ""', source)
+
     def test_render_websocket_route_is_opt_in_and_authenticated(self):
         source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

@@ -48,9 +48,12 @@ APP_DIR = Path(__file__).resolve().parent
 BASE_DIR = APP_DIR.parent
 WEB_DIR = APP_DIR / "web"
 
+# Detect Render PR previews before any optional .env loading.
+IS_PULL_REQUEST = os.environ.get("IS_PULL_REQUEST", "").strip().lower() == "true"
+
 # The Windows launcher may explicitly opt into loading its private .env file.
 # Render continues to use dashboard environment variables and does not load .env.
-if os.environ.get("EVERVAULT_LOAD_DOTENV", "").strip() == "1":
+if not IS_PULL_REQUEST and os.environ.get("EVERVAULT_LOAD_DOTENV", "").strip() == "1":
     try:
         from dotenv import load_dotenv
         env_file = os.environ.get("EVERVAULT_ENV_FILE", str(BASE_DIR / ".env"))
@@ -58,26 +61,41 @@ if os.environ.get("EVERVAULT_LOAD_DOTENV", "").strip() == "1":
     except ImportError as exc:
         raise RuntimeError("python-dotenv is required when EVERVAULT_LOAD_DOTENV=1") from exc
 
-# Windows can use Neon for shared metadata while keeping photo bytes on G:.
-# Render uses Neon as well, with photo bytes routed to the authenticated local agent.
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-USE_POSTGRES = bool(DATABASE_URL)
-LOCAL_MEDIA_PRIMARY = os.environ.get("EVERVAULT_LOCAL_PRIMARY", "").strip() == "1"
-LOCAL_STORAGE_URL = os.environ.get("LOCAL_STORAGE_URL", "").strip().rstrip("/")
-LOCAL_STORAGE_TOKEN = os.environ.get("LOCAL_STORAGE_TOKEN", "").strip()
-TUNNEL_ENABLED = os.environ.get("EVERVAULT_TUNNEL_ENABLED", "0").strip() == "1"
+# Isolate Render PR previews from production configuration.
+if IS_PULL_REQUEST:
+    DATABASE_URL = os.environ.get("EVERVAULT_PREVIEW_DATABASE_URL", "").strip()
+    LOCAL_MEDIA_PRIMARY = False
+    LOCAL_STORAGE_URL = ""
+    # Only explicitly configured preview credentials may enable this tunnel.
+    LOCAL_STORAGE_TOKEN = os.environ.get("EVERVAULT_PREVIEW_TUNNEL_TOKEN", "").strip()
+    TUNNEL_ENABLED = (
+        os.environ.get("EVERVAULT_PREVIEW_TUNNEL_ENABLED", "0").strip() == "1"
+        and len(LOCAL_STORAGE_TOKEN) >= 32
+    )
+    _configured_media_root = ""
+    _legacy_data_dir = Path("/tmp/evervault-pr-preview").absolute()
+    _state_override = str(_legacy_data_dir)
+    _media_override = ""
+    _temp_override = ""
+else:
+    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+    LOCAL_MEDIA_PRIMARY = os.environ.get("EVERVAULT_LOCAL_PRIMARY", "").strip() == "1"
+    LOCAL_STORAGE_URL = os.environ.get("LOCAL_STORAGE_URL", "").strip().rstrip("/")
+    LOCAL_STORAGE_TOKEN = os.environ.get("LOCAL_STORAGE_TOKEN", "").strip()
+    TUNNEL_ENABLED = os.environ.get("EVERVAULT_TUNNEL_ENABLED", "0").strip() == "1"
+    _configured_media_root = os.environ.get("EVERVAULT_DATA_DIR", "").strip()
+    _legacy_data_dir = Path(
+        _configured_media_root or str(Path.home() / "EvervaultData")
+    ).expanduser().absolute()
+    _state_override = os.environ.get("EVERVAULT_STATE_DIR", "").strip()
+    _media_override = os.environ.get("EVERVAULT_MEDIA_DIR", "").strip()
+    _temp_override = os.environ.get("EVERVAULT_TEMP_DIR", "").strip()
 
-# EVERVAULT_DATA_DIR means the user's preferred media root (e.g. G:\EvervaultData).
-# The SQLite database, login secret, and resumable-upload staging MUST stay on an
-# always-available system drive; otherwise losing G: would prevent the app from
-# starting before it could use the Google Drive fallback.
-_configured_media_root = os.environ.get("EVERVAULT_DATA_DIR", "").strip()
-_legacy_data_dir = Path(
-    _configured_media_root or str(Path.home() / "EvervaultData")
-).expanduser().absolute()
-_state_override = os.environ.get("EVERVAULT_STATE_DIR", "").strip()
-_media_override = os.environ.get("EVERVAULT_MEDIA_DIR", "").strip()
-_temp_override = os.environ.get("EVERVAULT_TEMP_DIR", "").strip()
+USE_POSTGRES = bool(DATABASE_URL)
+
+# EVERVAULT_DATA_DIR is the preferred media root on Windows.
+# State and temporary upload files must remain on an always-available drive.
+
 
 if USE_POSTGRES:
     # Hosted uploads use ephemeral temp files plus Google Drive, with metadata in Neon.
@@ -114,9 +132,11 @@ except OSError as exc:
 
 SECRET_FILE = DATA_DIR / ".secret"
 
-# Render should define EVERVAULT_SECRET so sessions remain valid across restarts.
-# Windows keeps using the existing local .secret file when the variable is absent.
-_secret_from_env = os.environ.get("EVERVAULT_SECRET", "").strip()
+# A PR preview must never reuse the production session secret.
+if IS_PULL_REQUEST:
+    _secret_from_env = os.environ.get("EVERVAULT_PREVIEW_SECRET", "").strip()
+else:
+    _secret_from_env = os.environ.get("EVERVAULT_SECRET", "").strip()
 if _secret_from_env:
     SECRET = _secret_from_env.encode()
 else:
@@ -144,6 +164,26 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+# Keep PR previews read-only over HTTP so inherited integrations cannot be used
+# to upload, alter, or delete data during tunnel testing.
+if IS_PULL_REQUEST:
+    @app.middleware("http")
+    async def preview_read_only_guard(request: Request, call_next):
+        if (
+            request.method not in {"GET", "HEAD", "OPTIONS"}
+            and not (
+                request.method == "POST"
+                and request.url.path in {"/api/setup", "/api/login"}
+            )
+        ):
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "PR preview is read-only"},
+            )
+        return await call_next(request)
+
 
 
 @app.websocket("/internal/tunnel/ws")
