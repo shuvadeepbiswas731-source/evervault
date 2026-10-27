@@ -23,6 +23,16 @@ class PatchWiringTests(unittest.TestCase):
         self.assertIn('if USE_POSTGRES and TUNNEL_ENABLED:', source)
         self.assertIn('await TUNNEL_MANAGER.open_download(', source)
 
+    def test_remote_photo_route_preserves_drive_fallback_when_tunnel_is_unavailable(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        start = source.index("    # Preferred remote path: Render relays the request over the Windows client's")
+        end = source.index("    # Compatibility path for earlier deployments that exposed an authenticated local-agent URL.", start)
+        block = source[start:end]
+        self.assertIn("if tunnel_status in (200, 206) and tunnel_body is not None:", block)
+        self.assertIn("if not drive_id:", block)
+        self.assertIn("fall through to the existing streamed Google Drive reader", block)
+        self.assertNotIn('raise HTTPException(503, "The personal photo drive is offline or this file is waiting for recovery.")', block)
+
     def test_windows_client_uses_outbound_wss_and_loopback_agent(self):
         source = (ROOT / "app" / "tunnel_client.py").read_text(encoding="utf-8")
         self.assertIn('websockets.asyncio.client import connect', source)

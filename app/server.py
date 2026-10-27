@@ -904,27 +904,33 @@ async def media_file(
     if USE_POSTGRES and TUNNEL_ENABLED:
         if not LOCAL_STORAGE_TOKEN:
             raise HTTPException(503, "The Evervault tunnel is not configured.")
+        tunnel_status, tunnel_headers, tunnel_body = 503, {}, None
         try:
             tunnel_status, tunnel_headers, tunnel_body = await TUNNEL_MANAGER.open_download(
                 stored_name, request.headers.get("range")
             )
-        except (TunnelUnavailable, ValueError) as exc:
-            raise HTTPException(503, "The Evervault Windows client is not connected or the photo drive is unavailable.") from exc
-        if tunnel_status not in (200, 206) or tunnel_body is None:
-            raise HTTPException(503, "The personal photo drive is offline or this file is waiting for recovery.")
-        headers = {
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(str(row['name']), safe='')}",
-            "Accept-Ranges": tunnel_headers.get("accept-ranges", "bytes"),
-        }
-        for key in ("content-length", "content-range", "last-modified", "etag"):
-            if key in tunnel_headers:
-                headers[{"content-length":"Content-Length", "content-range":"Content-Range", "last-modified":"Last-Modified", "etag":"ETag"}[key]] = tunnel_headers[key]
-        return StreamingResponse(
-            tunnel_body,
-            status_code=tunnel_status,
-            media_type=row["mime"],
-            headers=headers,
-        )
+        except (TunnelUnavailable, ValueError):
+            # A disconnected PC or a photo not yet restored to G: should not make a
+            # verified Google Drive fallback unreadable while its fallback ID remains.
+            pass
+        if tunnel_status in (200, 206) and tunnel_body is not None:
+            headers = {
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(str(row['name']), safe='')}",
+                "Accept-Ranges": tunnel_headers.get("accept-ranges", "bytes"),
+            }
+            for key in ("content-length", "content-range", "last-modified", "etag"):
+                if key in tunnel_headers:
+                    headers[{"content-length":"Content-Length", "content-range":"Content-Range", "last-modified":"Last-Modified", "etag":"ETag"}[key]] = tunnel_headers[key]
+            return StreamingResponse(
+                tunnel_body,
+                status_code=tunnel_status,
+                media_type=row["mime"],
+                headers=headers,
+            )
+        # If no Drive fallback exists, fail closed; otherwise let the verified
+        # drive_file_id fall through to the existing streamed Google Drive reader.
+        if not drive_id:
+            raise HTTPException(503, "The Evervault Windows client is not connected, and no cloud fallback is available.")
 
     # Compatibility path for earlier deployments that exposed an authenticated local-agent URL.
     if USE_POSTGRES and LOCAL_STORAGE_URL:
