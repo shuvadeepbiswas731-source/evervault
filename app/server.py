@@ -184,6 +184,60 @@ if IS_PULL_REQUEST:
             )
         return await call_next(request)
 
+    @app.get("/internal/tunnel/test_transfer")
+    async def preview_tunnel_test_transfer():
+        from fastapi.responses import JSONResponse
+        if not TUNNEL_ENABLED:
+            return JSONResponse(status_code=503, content={"ok": False, "error": "Tunnel disabled"})
+        if not TUNNEL_MANAGER.connected:
+            return JSONResponse(status_code=503, content={"ok": False, "error": "Tunnel client not connected"})
+
+        test_data = b"Evervault reverse tunnel verified end-to-end payload: " + secrets.token_bytes(4096)
+        expected_size = len(test_data)
+        expected_sha256 = hashlib.sha256(test_data).hexdigest()
+        test_stored_name = f"preview_test_{uuid.uuid4().hex[:12]}.bin"
+
+        with tempfile.NamedTemporaryFile(prefix="tunnel-test-", suffix=".bin", delete=False) as tf:
+            tf.write(test_data)
+            tf_path = Path(tf.name)
+
+        try:
+            upload_result = await TUNNEL_MANAGER.upload_file(
+                tf_path, test_stored_name, "application/octet-stream", expected_size, expected_sha256
+            )
+            if not upload_result or not isinstance(upload_result, dict):
+                return JSONResponse(status_code=502, content={"ok": False, "error": "Upload via tunnel failed"})
+
+            status_code, headers, body = await TUNNEL_MANAGER.open_download(test_stored_name)
+            if status_code != 200 or body is None:
+                return JSONResponse(status_code=502, content={"ok": False, "error": f"Download via tunnel returned status {status_code}"})
+
+            downloaded = bytearray()
+            async for chunk in body:
+                downloaded.extend(chunk)
+
+            download_sha256 = hashlib.sha256(downloaded).hexdigest()
+            if len(downloaded) != expected_size or download_sha256 != expected_sha256:
+                return JSONResponse(status_code=502, content={
+                    "ok": False,
+                    "error": "Checksum mismatch on download",
+                    "expected_size": expected_size,
+                    "downloaded_size": len(downloaded),
+                    "expected_sha256": expected_sha256,
+                    "downloaded_sha256": download_sha256,
+                })
+
+            return {
+                "ok": True,
+                "stored_name": test_stored_name,
+                "size": expected_size,
+                "sha256": expected_sha256,
+                "upload_verified": True,
+                "download_verified": True,
+            }
+        finally:
+            tf_path.unlink(missing_ok=True)
+
 
 
 @app.websocket("/internal/tunnel/ws")
